@@ -67,6 +67,16 @@ public class TheBestPlayer extends Player
         return moves.get(random.nextInt(moves.size())).getMove();
     }
 
+    private float calculateMoveValue(Board board, MyMove move)
+    {
+        // 1. Jeżeli ruch powoduje wygraną - return 1
+        // 2. Jeżeli ruch powoduje wygraną przeciwnika - return 0;
+        // 3. Jeżeli przeciwnik ma winningLength-1, a nasz ruch może w tym przeszkodzić - return 1
+        // 4. Sprawdź kolejno możliwość poszerzenia jednego z wzorów: triple power play -> straight five -> middle five -> monica's five
+        //    W zależności od tego który to wzór, i ile jeszcze do niego brakuje zapisz wartości z przedziału 0-1 i zwróć największą z nich
+        return 0;
+    }
+
     private Move findLongestRowExtension(Board board, int winningLength, List<MyMove> moves)
     {
         List<List<Color>> patterns = new ArrayList<>();
