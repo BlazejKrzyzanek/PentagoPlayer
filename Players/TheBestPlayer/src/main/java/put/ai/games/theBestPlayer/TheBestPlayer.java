@@ -7,7 +7,7 @@ package put.ai.games.theBestPlayer;
 import put.ai.games.game.Board;
 import put.ai.games.game.Move;
 import put.ai.games.game.Player;
-import put.ai.games.game.moves.RotateMove;
+import put.ai.games.pentago.impl.PentagoBoard;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -30,50 +30,107 @@ public class TheBestPlayer extends Player
         int boardSize = board.getSize();
         int winningLength = boardSize / 2 + (boardSize / 2 + 1) / 2;
 
-        List<MyMove> moves = board.getMovesFor(getColor()).stream().map(MyMove::new).collect(Collectors.toList());
+        List<MyMove> moves = board.getMovesFor(getColor()).stream().map(o -> new MyMove(o, boardSize)).collect(Collectors.toList());
+        MyBoard myBoard = new MyBoard((PentagoBoard) board);
+        MyMove bestMove = moves.get(0);
+        float bestMoveValue = 0;
 
-        Move longestRowExtensionMove = findLongestRowExtension(board, winningLength - 1, moves);
-        if (longestRowExtensionMove != null)
+        Color myColor = getColor();
+        Color opponentColor = Arrays.stream(Color.values()).filter(color -> !(color.equals(myColor) || color.equals(Color.EMPTY))).findAny().orElse(Color.EMPTY);
+
+        for (MyMove myMove : moves)
         {
-            System.out.println(String.format("Trying to extend the longest existing row \t| Time: %dms \t| Available time: %dms", System.currentTimeMillis() - startTime, getTime()));
-            return longestRowExtensionMove;
+            float moveValue = calculateMoveValue(myBoard, myMove, winningLength, myColor, opponentColor);
+            System.out.println(moveValue);
+
+            if (moveValue > 0.99)
+            {
+                return myMove.getMove();
+            }
+            else if (moveValue > bestMoveValue)
+            {
+                bestMoveValue = moveValue;
+                bestMove = myMove;
+            }
         }
 
-        Optional<MyMove> move = moves.stream()
-                .filter(m -> m.getPlaceX() == boardSize / 2)
-                .findFirst();
-        if (move.isPresent())
+        List<Color> pattern = new ArrayList<>();
+        pattern.add(Color.EMPTY);
+        for (int i = 0; i < winningLength - 1; i++)
         {
-            System.out.println(
-                    String.format("Trying edge of board quarter \t| Time: %dms \t| Available time: %dms",
-                            System.currentTimeMillis() - startTime, getTime()));
-            return move.get().getMove();
+            pattern.add(opponentColor);
         }
 
-        move = moves.stream()
-                .filter(m -> m.getPlaceY() == boardSize / 2)
-                .findFirst();
-        if (move.isPresent())
+        BoardPosition boardPosition = findPatternOnBoard(board, pattern);
+        if (boardPosition != null)
         {
-            System.out.println(
-                    String.format("Trying edge of board quarter \t| Time: %dms \t| Available time: %dms",
-                            System.currentTimeMillis() - startTime, getTime()));
-            return move.get().getMove();
+            MyMove blockingMove = moves.stream()
+                    .filter(move ->
+                            move.placeX == boardPosition.getX()
+                                    && move.placeY == boardPosition.getY())
+                    .findFirst()
+                    .orElse(null);
+
+            if (blockingMove != null && bestMoveValue < 0.99)
+            {
+                return blockingMove.getMove();
+            }
         }
 
-        System.out.println(
-                String.format("Random turn \t| Time: %dms \t| Available time: %dms",
-                        System.currentTimeMillis() - startTime, getTime()));
-        return moves.get(random.nextInt(moves.size())).getMove();
+        if(bestMoveValue < 0.2)
+        {
+            return moves.get(random.nextInt(moves.size())).getMove();
+        }
+
+        return bestMove.getMove();
     }
 
-    private float calculateMoveValue(Board board, MyMove move)
+    private float calculateMoveValue(MyBoard board, MyMove move, int winningLength, Color myColor, Color opponentColor)
     {
-        // 1. Jeżeli ruch powoduje wygraną - return 1
-        // 2. Jeżeli ruch powoduje wygraną przeciwnika - return 0;
-        // 3. Jeżeli przeciwnik ma winningLength-1, a nasz ruch może w tym przeszkodzić - return 1
-        // 4. Sprawdź kolejno możliwość poszerzenia jednego z wzorów: triple power play -> straight five -> middle five -> monica's five
-        //    W zależności od tego który to wzór, i ile jeszcze do niego brakuje zapisz wartości z przedziału 0-1 i zwróć największą z nich
+        Board boardAfterMove = board.getBoardAfterMove(move);
+
+        if (boardAfterMove != null)
+        {
+            // 2. Jeżeli ruch powoduje wygraną przeciwnika - return 0;
+            if (isRowAfterMove(boardAfterMove, opponentColor, winningLength))
+            {
+                return 0;
+            }
+
+            return longestRowOnBoard(boardAfterMove, winningLength) / (float) winningLength;
+        }
+
+        return 0.5f;
+    }
+
+    private boolean isRowAfterMove(Board boardAfterMove, Color playerColor, int winningLength)
+    {
+        List<Color> pattern = new ArrayList<>();
+        for (int i = 0; i < winningLength; i++)
+        {
+            pattern.add(playerColor);
+        }
+
+        return findPatternOnBoard(boardAfterMove, pattern) != null;
+    }
+
+
+    private int longestRowOnBoard(Board board, int winningLength)
+    {
+        for (int a = winningLength; a > 1; a--)
+        {
+            List<Color> pattern = new ArrayList<>();
+            for (int i = 0; i < a; i++)
+            {
+                pattern.add(getColor());
+            }
+
+            if (findPatternOnBoard(board, pattern) != null)
+            {
+                return a;
+            }
+        }
+
         return 0;
     }
 
@@ -99,8 +156,6 @@ public class TheBestPlayer extends Player
                 }
             }
         }
-
-        System.out.println(patterns);
 
         Optional<BoardPosition> bestPosition = patterns
                 .stream()
@@ -141,7 +196,6 @@ public class TheBestPlayer extends Player
 
     private boolean doesPatternExist(Board board, PatternDirectionsEnum direction, int x, int y, List<Color> pattern)
     {
-
         if (!board.getState(x, y).equals(pattern.get(0)))
         {
             return false;
@@ -176,13 +230,13 @@ public class TheBestPlayer extends Player
     private enum PatternDirectionsEnum
     {
         LEFT(1, 0),
-        LEFT_DOWN(1, 1),
+//                LEFT_DOWN(1, 1),
         DOWN(0, 1),
-        RIGHT_DOWN(-1, 1),
+//                RIGHT_DOWN(-1, 1),
         RIGHT(-1, 0),
-        RIGHT_UP(-1, -1),
-        UP(0, -1),
-        LEFT_UP(1, -1);
+//                RIGHT_UP(-1, -1),
+        UP(0, -1);
+//        LEFT_UP(1, -1);
 
         private int horizontal;
         private int vertical;
@@ -201,6 +255,30 @@ public class TheBestPlayer extends Player
         public int getVertical()
         {
             return vertical;
+        }
+    }
+
+    private enum MyDirection
+    {
+        LEFT_UPPER_LEFT("lu"),
+        LEFT_UPPER_RIGHT("lu"),
+        LEFT_LOWER_LEFT("ll"),
+        LEFT_LOWER_RIGHT("ll"),
+        RIGHT_UPPER_LEFT("ru"),
+        RIGHT_UPPER_RIGHT("ru"),
+        RIGHT_LOWER_LEFT("rl"),
+        RIGHT_LOWER_RIGHT("rl");
+
+        private String quarter;
+
+        MyDirection(String quarter)
+        {
+            this.quarter = quarter;
+        }
+
+        public String getQuarter()
+        {
+            return quarter;
         }
     }
 
@@ -230,10 +308,11 @@ public class TheBestPlayer extends Player
     {
         private final int placeX;
         private final int placeY;
-        private final RotateMove.Direction direction;
+        private final MyDirection direction;
         private final Move move;
+        private final String placeQuarter;
 
-        MyMove(Move move)
+        MyMove(Move move, int boardSize)
         {
             this.move = move;
 
@@ -246,8 +325,86 @@ public class TheBestPlayer extends Player
             placeX = Integer.valueOf(elements[0]);
             placeY = Integer.valueOf(elements[1]);
 
-            direction = elements[6]
-                    .equalsIgnoreCase("CLOCKWISE") ? RotateMove.Direction.CLOCKWISE : RotateMove.Direction.COUNTERCLOCKWISE;
+            int middle = boardSize / 2;
+
+            if (placeX < middle)
+            {
+                if (placeY < middle)
+                {
+                    placeQuarter = "lu";
+                }
+                else
+                {
+                    placeQuarter = "ll";
+                }
+            }
+            else
+            {
+                if (placeY < middle)
+                {
+                    placeQuarter = "ru";
+                }
+                else
+                {
+                    placeQuarter = "rl";
+                }
+            }
+
+            int fromX = Integer.valueOf(elements[2]);
+            int fromY = Integer.valueOf(elements[3]);
+            int toX = Integer.valueOf(elements[4]);
+            int toY = Integer.valueOf(elements[5]);
+
+            if (elements[6].equalsIgnoreCase("CLOCKWISE"))
+            {
+                if (fromX < middle)
+                {
+                    if (fromY < middle)
+                    {
+                        direction = MyDirection.LEFT_UPPER_LEFT;
+                    }
+                    else
+                    {
+                        direction = MyDirection.LEFT_LOWER_LEFT;
+                    }
+                }
+                else
+                {
+                    if (fromY < middle)
+                    {
+                        direction = MyDirection.RIGHT_UPPER_LEFT;
+                    }
+                    else
+                    {
+                        direction = MyDirection.RIGHT_LOWER_LEFT;
+                    }
+                }
+            }
+            else
+            {
+                if (fromX < middle)
+                {
+                    if (fromY < middle)
+                    {
+                        direction = MyDirection.LEFT_UPPER_RIGHT;
+                    }
+                    else
+                    {
+                        direction = MyDirection.LEFT_LOWER_RIGHT;
+                    }
+                }
+                else
+                {
+                    if (fromY < middle)
+                    {
+                        direction = MyDirection.RIGHT_UPPER_RIGHT;
+                    }
+                    else
+                    {
+                        direction = MyDirection.RIGHT_LOWER_RIGHT;
+                    }
+                }
+            }
         }
 
         int getPlaceX()
@@ -260,7 +417,7 @@ public class TheBestPlayer extends Player
             return placeY;
         }
 
-        public RotateMove.Direction getDirection()
+        public MyDirection getDirection()
         {
             return direction;
         }
@@ -268,6 +425,42 @@ public class TheBestPlayer extends Player
         Move getMove()
         {
             return move;
+        }
+
+//        public int getNewX()
+//        {
+//            if (direction.getQuarter().equals(placeQuarter))
+//            {
+//                if (direction)
+//            }
+//            else
+//            {
+//                return placeX;
+//            }
+//        }
+    }
+
+    private class MyBoard
+    {
+        private PentagoBoard boardBeforeMove;
+
+        MyBoard(PentagoBoard boardBeforeMove)
+        {
+            this.boardBeforeMove = boardBeforeMove;
+        }
+
+        PentagoBoard getBoardAfterMove(MyMove move)
+        {
+            PentagoBoard board = boardBeforeMove.clone();
+
+            board.doMove(move.getMove());
+
+            return board;
+        }
+
+        PentagoBoard getBoardBeforeMove()
+        {
+            return boardBeforeMove;
         }
     }
 }
