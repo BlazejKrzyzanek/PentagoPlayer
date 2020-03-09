@@ -15,12 +15,12 @@ import java.util.stream.Collectors;
 public class TheBestPlayer extends Player
 {
 
-    private Random random = new Random(0xdeadbeef);
+    private Random random = new Random(0xFEE1DEAD);
 
     @Override
     public String getName()
     {
-        return "Błażej Krzyżanek 136749 Wojciech Rak 136789";
+        return "Błażej Krzyżanek";
     }
 
     @Override
